@@ -1,4 +1,3 @@
-
 import argparse
 import itertools
 import os
@@ -13,13 +12,14 @@ SPORTS = ["americanfootball_nfl", "basketball_nba", "soccer_epl"]
 API_BASE = "https://api.the-odds-api.com/v4"
 
 # Only suggest legs where we estimate we have at least this much edge.
-MIN_LEG_EDGE = 0.02        # 2% EV on a single leg
-MIN_PARLAY_EV = 0.04       # 4% EV on the combined parlay
-MAX_LEGS = 3               # Keep parlays small — more legs = more variance
+MIN_LEG_EDGE = 0.02  # 2% EV on a single leg
+MIN_PARLAY_EV = 0.04  # 4% EV on the combined parlay
+MAX_LEGS = 3  # Keep parlays small — more legs = more variance
 MIN_LEGS = 2
 
 
 # ── Maths ─────────────────────────────────────────────────────────────────────
+
 
 def implied_prob(american_odds: int) -> float:
     """Convert American odds to implied probability (includes bookmaker margin)."""
@@ -28,7 +28,9 @@ def implied_prob(american_odds: int) -> float:
     return 100 / (american_odds + 100)
 
 
-def estimate_true_prob(home_odds: int, away_odds: int, draw_odds: Optional[int] = None) -> dict:
+def estimate_true_prob(
+    home_odds: int, away_odds: int, draw_odds: Optional[int] = None
+) -> dict:
     """
     [LEGACY — single-book version, no longer called by extract_legs]
 
@@ -85,13 +87,15 @@ def to_american(decimal_odds: float) -> int:
 
 # ── Data fetching ──────────────────────────────────────────────────────────────
 
+
 def fetch_odds(api_key: str, sport: str) -> list[dict]:
-    """Fetch moneyline odds for a sport from The Odds API."""
+    """Fetch moneyline, spread, and total odds for a sport from The Odds API."""
     url = f"{API_BASE}/sports/{sport}/odds"
     params = {
         "apiKey": api_key,
         "regions": "us",
-        "markets": "h2h",       # h2h = moneyline
+        # h2h = moneyline, spreads = point spread, totals = over/under
+        "markets": "h2h,spreads,totals",
         "oddsFormat": "american",
         "dateFormat": "iso",
     }
@@ -108,6 +112,7 @@ def fetch_odds(api_key: str, sport: str) -> list[dict]:
 
 
 # ── Leg extraction ─────────────────────────────────────────────────────────────
+
 
 def average_book_probs(bookmakers: list[dict], outcome_names: list[str]) -> dict:
     """
@@ -160,6 +165,111 @@ def best_odds_for(bookmakers: list[dict], outcome_name: str) -> Optional[int]:
     return best_price
 
 
+def two_way_market_legs(
+    bookmakers: list[dict],
+    market_key: str,
+    game_label: str,
+    time: str,
+    sport: str,
+) -> list[dict]:
+    """
+    Extract +EV legs from a two-sided point market (spreads or totals).
+
+    Spreads and totals differ from moneylines: each outcome carries a `point`
+    (e.g. -3.5, or 47.5) as well as a price. The two sides are still a fair
+    coin once vig is removed, so the math mirrors the moneyline case — average
+    each side's implied prob across books, normalise to sum to 1, find best price.
+
+    The consensus `point` (most common line across books) is used for the label
+    so the suggestion reflects the standard market number.
+    """
+    # Collect per-side implied probs and the points each book is using
+    side_probs: dict[str, list[float]] = {}
+    side_points: dict[str, list[float]] = {}
+
+    for bookmaker in bookmakers:
+        market = next(
+            (m for m in bookmaker.get("markets", []) if m["key"] == market_key),
+            None,
+        )
+        if not market:
+            continue
+        outcomes = market["outcomes"]
+        # A valid two-way market has exactly two priced sides
+        if len(outcomes) != 2:
+            continue
+        for o in outcomes:
+            name = o["name"]
+            side_probs.setdefault(name, []).append(implied_prob(o["price"]))
+            if o.get("point") is not None:
+                side_points.setdefault(name, []).append(o["point"])
+
+    # Need both sides present to strip vig
+    if len(side_probs) != 2:
+        return []
+
+    avg = {name: sum(v) / len(v) for name, v in side_probs.items()}
+    total = sum(avg.values())
+    if total == 0:
+        return []
+    true_probs = {name: v / total for name, v in avg.items()}
+
+    legs = []
+    for name in avg:
+        tp = true_probs[name]
+
+        # Consensus point = most common line across books for this side
+        pts = side_points.get(name, [])
+        consensus_point = max(set(pts), key=pts.count) if pts else None
+
+        # Best (lowest implied prob = highest payout) price for this side
+        best_price = None
+        best_implied = None
+        for bookmaker in bookmakers:
+            market = next(
+                (m for m in bookmaker.get("markets", []) if m["key"] == market_key),
+                None,
+            )
+            if not market:
+                continue
+            for o in market["outcomes"]:
+                if o["name"] != name:
+                    continue
+                imp = implied_prob(o["price"])
+                if best_implied is None or imp < best_implied:
+                    best_implied = imp
+                    best_price = o["price"]
+        if best_price is None:
+            continue
+
+        ev = leg_ev(tp, best_price)
+        if ev < MIN_LEG_EDGE:
+            continue
+
+        # Build a readable label per market type
+        if market_key == "spreads":
+            point_str = f"{consensus_point:+g}" if consensus_point is not None else ""
+            label = f"{name} {point_str}".strip()
+        else:  # totals — name is "Over" or "Under"
+            point_str = f"{consensus_point:g}" if consensus_point is not None else ""
+            label = f"{name} {point_str}".strip()
+
+        legs.append(
+            {
+                "label": label,
+                "game": game_label,
+                "time": time,
+                "sport": sport,
+                "market": market_key,
+                "odds": best_price,
+                "true_prob": tp,
+                "ev": ev,
+            }
+        )
+
+    return legs
+
+
 def extract_legs(games: list[dict], sport: str) -> list[dict]:
     """
     Pull candidate +EV legs from raw API response.
@@ -184,7 +294,8 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
         has_draw = any(
             o["name"] == "Draw"
             for b in bookmakers
-            for m in b.get("markets", []) if m["key"] == "h2h"
+            for m in b.get("markets", [])
+            if m["key"] == "h2h"
             for o in m["outcomes"]
         )
         if has_draw:
@@ -208,15 +319,27 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
                 continue
             ev = leg_ev(tp, odds)
             if ev >= MIN_LEG_EDGE:
-                legs.append({
-                    "label": f"{side} ML",
-                    "game": f"{away} @ {home}",
-                    "time": commence,
-                    "sport": sport,
-                    "odds": odds,
-                    "true_prob": tp,
-                    "ev": ev,
-                })
+                legs.append(
+                    {
+                        "label": f"{side} ML",
+                        "game": f"{away} @ {home}",
+                        "time": commence,
+                        "sport": sport,
+                        "market": "h2h",
+                        "odds": odds,
+                        "true_prob": tp,
+                        "ev": ev,
+                    }
+                )
+
+        # Spreads and totals — same vig-removal math, handled generically
+        game_label = f"{away} @ {home}"
+        legs.extend(
+            two_way_market_legs(bookmakers, "spreads", game_label, commence, sport)
+        )
+        legs.extend(
+            two_way_market_legs(bookmakers, "totals", game_label, commence, sport)
+        )
 
     return legs
 
