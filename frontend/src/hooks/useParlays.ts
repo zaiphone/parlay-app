@@ -6,24 +6,20 @@ const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 interface UseParlaysReturn {
   parlays: Parlay[];
+  bookmakers: string[];
   state: FetchState;
   error: string | null;
   lastUpdated: Date | null;
   refetch: () => void;
 }
 
-/**
- * Fetches parlay suggestions from /api/parlays and auto-refreshes
- * every 10 minutes. Returns fetch state, data, error, and a manual
- * refetch trigger.
- */
 export function useParlays(): UseParlaysReturn {
   const [parlays, setParlays] = useState<Parlay[]>([]);
+  const [bookmakers, setBookmakers] = useState<string[]>([]);
   const [state, setState] = useState<FetchState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Stable fetch function that doesn't trigger useEffect re-runs
   const fetchParlays = useCallback(async (signal?: AbortSignal) => {
     setState('loading');
     setError(null);
@@ -35,30 +31,48 @@ export function useParlays(): UseParlaysReturn {
         throw new Error(`Server returned ${res.status} ${res.statusText}`);
       }
 
-      const data: Parlay[] = await res.json();
+      const raw = await res.json();
+
+      // Log exactly what the backend sent — visible in browser console
+      console.log('[useParlays] backend response:', raw);
+
+      // Guard: if the backend wrapped the array in an object, unwrap it
+      let data: Parlay[] = [];
+      if (Array.isArray(raw)) {
+        data = raw;
+      } else if (raw && Array.isArray(raw.parlays)) {
+        // handles { parlays: [...] } shape
+        console.warn('[useParlays] response was {parlays:[...]}, unwrapping');
+        data = raw.parlays;
+      } else {
+        console.warn('[useParlays] unexpected response shape:', typeof raw, raw);
+      }
+
       setParlays(data);
+
+      // Bookmakers: prefer the explicit list from the backend.
+      // Falls back to an empty list if the backend hasn't been updated yet.
+      const books: string[] =
+        raw && Array.isArray(raw.bookmakers) ? raw.bookmakers : [];
+      setBookmakers(books);
+
       setLastUpdated(new Date());
       setState('success');
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return; // Unmount cleanup — not a real error
-
-      const msg =
-        err instanceof Error ? err.message : 'Unexpected error fetching parlays.';
-
-      console.error('[useParlays]', msg);
+      if ((err as Error).name === 'AbortError') return;
+      const msg = err instanceof Error ? err.message : 'Unexpected error fetching parlays.';
+      console.error('[useParlays] fetch failed:', msg);
       setError(msg);
       setState('error');
     }
   }, []);
 
-  // Initial fetch + cleanup on unmount
   useEffect(() => {
     const controller = new AbortController();
     fetchParlays(controller.signal);
     return () => controller.abort();
   }, [fetchParlays]);
 
-  // Background polling every 10 minutes
   const fetchRef = useRef(fetchParlays);
   fetchRef.current = fetchParlays;
 
@@ -69,11 +83,5 @@ export function useParlays(): UseParlaysReturn {
     return () => clearInterval(id);
   }, []);
 
-  return {
-    parlays,
-    state,
-    error,
-    lastUpdated,
-    refetch: fetchParlays,
-  };
+  return { parlays, bookmakers, state, error, lastUpdated, refetch: fetchParlays };
 }

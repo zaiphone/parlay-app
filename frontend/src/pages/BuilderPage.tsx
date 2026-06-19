@@ -1,3 +1,4 @@
+import { sportDisplayLabel } from '../utils';
 import { useState, useEffect } from 'react';
 import type { LegCount } from '../types';
 import { useParlays } from '../hooks/useParlays';
@@ -12,12 +13,13 @@ import { SkeletonCard } from '../components/SkeletonCard';
 const A = '#22c55e';
 
 export function BuilderPage() {
-  const { parlays, state, error, lastUpdated, refetch } = useParlays();
+  const { parlays, bookmakers, state, error, lastUpdated, refetch } = useParlays();
 
   const [sport, setSport] = useState<string>('nba');
   const [betAmount, setBetAmount] = useState<string>('25');
   const [legCount, setLegCount] = useState<LegCount>(2);
   const [excluded, setExcluded] = useState<Record<string, boolean>>({});
+  const [showDisclaimer, setShowDisclaimer] = useState<boolean>(false);
 
   const { sports, slate, includedCount, results, notEnough } = useParlayBuilder({
     parlays,
@@ -176,7 +178,7 @@ export function BuilderPage() {
                   lineHeight: 1.5,
                 }}
               >
-                No {legCount}-leg +EV parlays for {sport.toUpperCase()} right now. Try the other leg
+                No {legCount}-leg +EV parlays for {sportDisplayLabel(sport)} right now. Try the other leg
                 count, switch sports, or re-include games.
               </div>
             )}
@@ -192,20 +194,94 @@ export function BuilderPage() {
           </>
         )}
 
-        {/* Footer disclaimer */}
+        {/* Footer: bookmakers + disclaimer */}
         <div
-          className="mono"
           style={{
-            textAlign: 'center',
-            fontSize: 10,
-            color: 'var(--faint)',
             marginTop: 30,
-            lineHeight: 1.6,
+            paddingTop: 18,
+            borderTop: '1px solid var(--line)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          EV = model win probability × decimal odds − 1. 21+ where legal.
-          <br />
-          Odds update automatically every 10 minutes.
+          {/* Which books priced this data */}
+          {bookmakers.length > 0 && (
+            <div
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: 'var(--muted)',
+                textAlign: 'center',
+                lineHeight: 1.5,
+                maxWidth: 620,
+              }}
+            >
+              Odds sourced from: {bookmakers.join(' · ')}
+            </div>
+          )}
+
+          {/* Mechanics note */}
+          <div
+            className="mono"
+            style={{ fontSize: 10, color: 'var(--faint)', textAlign: 'center', lineHeight: 1.6 }}
+          >
+            EV = model win probability × decimal odds − 1. Odds refresh every 10 minutes.
+          </div>
+
+          {/* Disclaimer toggle */}
+          <button
+            onClick={() => setShowDisclaimer((v) => !v)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--muted-2)',
+              fontSize: 10,
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              fontFamily: 'Archivo, sans-serif',
+              padding: 0,
+            }}
+          >
+            {showDisclaimer ? 'Hide disclaimer' : 'Disclaimer & responsible gambling'}
+          </button>
+
+          {showDisclaimer && (
+            <div
+              style={{
+                fontSize: 10,
+                color: 'var(--faint)',
+                textAlign: 'center',
+                lineHeight: 1.7,
+                maxWidth: 560,
+                padding: '4px 8px',
+              }}
+            >
+              ParlayEV is an informational tool, not financial, investment, betting, or
+              legal advice. Expected-value figures are statistical estimates derived from
+              public bookmaker odds and are not guarantees of any outcome or profit.
+              Nothing here is a recommendation to place any wager. Sports betting carries
+              financial risk and may not be legal in your jurisdiction — you are responsible
+              for complying with all applicable laws. Must be 21+ where legal. If gambling
+              is affecting you or someone you know, call 1-800-GAMBLER.
+            </div>
+          )}
+
+          {/* Always-visible legal one-liner */}
+          <div
+            style={{
+              fontSize: 9,
+              color: 'var(--muted-2)',
+              textAlign: 'center',
+              lineHeight: 1.6,
+              marginTop: 4,
+              maxWidth: 560,
+            }}
+          >
+            For entertainment and informational purposes only · Not financial, betting, or
+            legal advice · 21+ where legal · Check your local laws · 1-800-GAMBLER
+          </div>
         </div>
       </div>
     </div>

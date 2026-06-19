@@ -65,14 +65,18 @@ def get_parlays():
         )
 
     all_legs = []
+    books_used = set()
     for sport in SPORTS:
         games = fetch_odds(api_key, sport)
+        for game in games:
+            for bm in game.get("bookmakers", []):
+                books_used.add(bm.get("title", bm.get("key", "")))
         all_legs.extend(extract_legs(games, sport))
 
     parlays = build_parlays(all_legs)
 
-    # Return the top 20 so the frontend isn't flooded
+    # Return the top 20 so the frontend isn't flooded, plus the books used
     return {
-        "count": len(parlays),
         "parlays": parlays[:20],
+        "bookmakers": sorted(b for b in books_used if b),
     }

@@ -92,3 +92,24 @@ export const SPORT_ORDER = ['nba', 'nfl', 'epl'] as const;
 export function sportLabel(sport: string): string {
   return sport.toUpperCase();
 }
+
+// ── Sport display names ───────────────────────────────────────
+
+// Maps the Odds API sport keys this app uses → short display labels.
+const SPORT_LABELS: Record<string, string> = {
+  'americanfootball_nfl': 'NFL',
+  'basketball_nba':       'NBA',
+  'soccer_epl':           'EPL',
+};
+
+/**
+ * Convert a raw Odds API sport key to a short display label.
+ * "americanfootball_nfl" → "NFL"
+ * Unknown keys fall back to the last segment uppercased.
+ */
+export function sportDisplayLabel(sport: string): string {
+  const key = sport.toLowerCase();
+  if (SPORT_LABELS[key]) return SPORT_LABELS[key];
+  const parts = key.split('_');
+  return parts[parts.length - 1].toUpperCase();
+}

@@ -1,3 +1,5 @@
+import { sportDisplayLabel } from '../utils';
+
 interface SportTabsProps {
   sports: { key: string; gameCount: number }[];
   active: string;
@@ -45,7 +47,7 @@ export function SportTabs({ sports, active, onChange }: SportTabsProps) {
             }}
           >
             <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '.5px' }}>
-              {key.toUpperCase()}
+              {sportDisplayLabel(key)}
             </span>
             <span
               style={{

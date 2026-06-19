@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import type { BuiltParlay } from '../types';
-import { formatOdds } from '../utils';
+import { formatOdds, sportDisplayLabel } from '../utils';
 
 interface ParlayResultProps {
   parlay: BuiltParlay;
@@ -8,10 +9,50 @@ interface ParlayResultProps {
 
 const A = '#22c55e';
 
+/**
+ * Build the parlay as a list of human-readable strings, one per leg, plus
+ * a summary line. Used for the Share / copy action.
+ */
+function buildShareLines(parlay: BuiltParlay, betAmount: string): string[] {
+  const legLines = parlay.source.legs.map(
+    (leg) => `${leg.label} (${formatOdds(leg.odds)}) — ${leg.game}`
+  );
+  const summary = `${parlay.source.n_legs}-leg parlay · ${parlay.oddsStr} · ${parlay.evStr} EV · risk $${
+    betAmount || '0'
+  } to win ${parlay.toWinStr}`;
+  return [...legLines, summary];
+}
+
 /** A single ranked +EV parlay result card. */
 export function ParlayResult({ parlay, betAmount }: ParlayResultProps) {
   const { source, rank } = parlay;
   const top = rank === 1;
+  const [shareLabel, setShareLabel] = useState('Share');
+
+  const handleShare = async () => {
+    const lines = buildShareLines(parlay, betAmount);
+    const text = lines.join('\n');
+
+    // Native share sheet (mobile) — best experience where available.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'ParlayEV pick', text });
+        return;
+      } catch {
+        // user cancelled or share failed — fall through to clipboard
+      }
+    }
+
+    // Fallback: copy to clipboard (desktop).
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareLabel('Copied ✓');
+      setTimeout(() => setShareLabel('Share'), 1800);
+    } catch {
+      setShareLabel('Copy failed');
+      setTimeout(() => setShareLabel('Share'), 1800);
+    }
+  };
 
   return (
     <div
@@ -103,7 +144,7 @@ export function ParlayResult({ parlay, betAmount }: ParlayResultProps) {
                 padding: '5px 7px',
               }}
             >
-              {leg.sport.toUpperCase()}
+              {sportDisplayLabel(leg.sport)}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -153,7 +194,8 @@ export function ParlayResult({ parlay, betAmount }: ParlayResultProps) {
             {parlay.toWinStr}
           </span>
         </div>
-        <div
+        <button
+          onClick={handleShare}
           style={{
             fontSize: 12,
             fontWeight: 700,
@@ -165,10 +207,12 @@ export function ParlayResult({ parlay, betAmount }: ParlayResultProps) {
             borderRadius: 8,
             padding: '7px 13px',
             background: 'rgba(34,197,94,.08)',
+            cursor: 'pointer',
+            fontFamily: 'Archivo, sans-serif',
           }}
         >
-          Add to slip →
-        </div>
+          {shareLabel}
+        </button>
       </div>
     </div>
   );

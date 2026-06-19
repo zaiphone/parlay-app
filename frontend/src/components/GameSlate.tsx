@@ -1,3 +1,4 @@
+import { sportDisplayLabel } from '../utils';
 import type { SlateGame } from '../types';
 
 interface GameSlateProps {
@@ -24,7 +25,7 @@ export function GameSlate({ sport, games, excluded, includedCount, onToggle }: G
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '.3px' }}>
-          Today's {sport.toUpperCase()} slate
+          Today's {sportDisplayLabel(sport)} slate
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, textAlign: 'right' }}>
           tap to include / exclude · {includedCount} of {games.length} in
