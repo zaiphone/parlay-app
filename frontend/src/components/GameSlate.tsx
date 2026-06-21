@@ -25,7 +25,7 @@ export function GameSlate({ sport, games, excluded, includedCount, onToggle }: G
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '.3px' }}>
-          Today's {sportDisplayLabel(sport)} slate
+          Upcoming {sportDisplayLabel(sport)} slate
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, textAlign: 'right' }}>
           tap to include / exclude · {includedCount} of {games.length} in
@@ -35,7 +35,7 @@ export function GameSlate({ sport, games, excluded, includedCount, onToggle }: G
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 1fr))',
           gap: 11,
           marginBottom: 34,
         }}
@@ -69,14 +69,11 @@ export function GameSlate({ sport, games, excluded, includedCount, onToggle }: G
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
+                  justifyContent: 'flex-end',
                   width: '100%',
                   marginBottom: 9,
                 }}
               >
-                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
-                  {g.time}
-                </span>
                 <span
                   style={{
                     width: 9,
@@ -111,6 +108,18 @@ export function GameSlate({ sport, games, excluded, includedCount, onToggle }: G
                 }}
               >
                 {g.matchup}
+              </div>
+
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--muted-2)',
+                  marginTop: 4,
+                  width: '100%',
+                }}
+              >
+                {g.time}
               </div>
 
               <div

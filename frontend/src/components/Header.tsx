@@ -50,7 +50,7 @@ export function Header({ isRefreshing, lastUpdated, onRefresh }: HeaderProps) {
             marginTop: 2,
           }}
         >
-          +EV parlay builder · today's slate
+          +EV parlay builder · upcoming slate
         </div>
       </div>
 

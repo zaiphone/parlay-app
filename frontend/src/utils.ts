@@ -76,6 +76,25 @@ export function formatTime(iso: string): string {
   }
 }
 
+/** Short local date + time from ISO, e.g. "Sun, Aug 10 · 1:00 PM". */
+export function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    const time = d.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    return `${date} · ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
 /** "X min ago" style relative time. */
 export function timeAgo(since: Date): string {
   const secs = Math.floor((Date.now() - since.getTime()) / 1000);

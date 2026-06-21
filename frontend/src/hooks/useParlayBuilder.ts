@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { Parlay, SlateGame, BuiltParlay, LegCount } from '../types';
 import {
   parseGame,
-  formatTime,
+  formatDateTime,
   displayOddsToDecimal,
   money,
   formatEV,
@@ -89,7 +89,7 @@ export function useParlayBuilder({
           key: leg.game,
           ...parsed,
           matchup: leg.game,
-          time: formatTime(leg.time),
+          time: formatDateTime(leg.time),
         });
       }
     }
