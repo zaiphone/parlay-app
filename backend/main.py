@@ -34,7 +34,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",  # Vite dev server
         "http://localhost:3000",  # fallback if you change the port
-        "https://parlay-theta.vercel.app/",
+        "https://parlay-theta.vercel.app",
     ],
     allow_methods=["GET"],
     allow_headers=["*"],
