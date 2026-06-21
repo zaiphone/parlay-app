@@ -7,7 +7,12 @@ import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SPORTS = ["americanfootball_nfl", "basketball_nba", "soccer_epl"]
+SPORTS = [
+    "americanfootball_nfl",
+    "basketball_nba",
+    "soccer_epl",
+    "soccer_fifa_world_cup",
+]
 
 API_BASE = "https://api.the-odds-api.com/v4"
 
@@ -270,6 +275,17 @@ def two_way_market_legs(
     return legs
 
 
+from datetime import datetime, timezone
+
+
+def is_upcoming(commence_time: str) -> bool:
+    """Return True if the game's official start time is still in the future."""
+    if not commence_time:
+        return False
+    game_time = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
+    return game_time > datetime.now(timezone.utc)
+
+
 def extract_legs(games: list[dict], sport: str) -> list[dict]:
     """
     Pull candidate +EV legs from raw API response.
@@ -277,13 +293,22 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
     For each game: averages the implied probability across ALL bookmakers,
     strips the vig, then calculates EV against the BEST available odds
     (line shopping). This is a far better estimate than a single book's line.
+
+    Skips games that have already started — live/in-play odds move too fast
+    for this engine's pregame vig-removal math to stay accurate.
     """
+
     legs = []
 
     for game in games:
+        # Skip games already in progress or finished
+        raw_commence = game.get("commence_time", "")
+        if not is_upcoming(raw_commence):
+            continue
+
         home = game.get("home_team")
         away = game.get("away_team")
-        commence = game.get("commence_time", "")[:16].replace("T", " ")
+        commence = raw_commence
 
         bookmakers = game.get("bookmakers", [])
         if not bookmakers:
@@ -342,16 +367,16 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
         )
 
     return legs
-
-
 # ── Parlay builder ─────────────────────────────────────────────────────────────
 
 def build_parlays(legs: list[dict]) -> list[dict]:
     """
     Generate all 2- and 3-leg combos from candidate legs and rank by EV.
 
-    Skips combinations where two legs are from the same game (correlated).
+    Skips combinations where two legs are from the same game (correlated),
+    and skips combinations that mix legs from different sports.
     """
+
     parlays = []
 
     for n in range(MIN_LEGS, MAX_LEGS + 1):
@@ -359,6 +384,11 @@ def build_parlays(legs: list[dict]) -> list[dict]:
             # Reject same-game legs (correlated outcomes)
             games = [leg["game"] for leg in combo]
             if len(games) != len(set(games)):
+                continue
+
+            # Reject combos that mix sports — keep each parlay single-sport
+            sports = {leg["sport"] for leg in combo}
+            if len(sports) > 1:
                 continue
 
             ev = parlay_ev(list(combo))
@@ -379,7 +409,6 @@ def build_parlays(legs: list[dict]) -> list[dict]:
             })
 
     return sorted(parlays, key=lambda p: p["ev"], reverse=True)
-
 
 # ── Display ────────────────────────────────────────────────────────────────────
 
