@@ -32,8 +32,9 @@ app = FastAPI(title="Parlay Suggestions API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",   # Vite dev server
-        "http://localhost:3000",   # fallback if you change the port
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # fallback if you change the port
+        "https://parlay-theta.vercel.app/",
     ],
     allow_methods=["GET"],
     allow_headers=["*"],
