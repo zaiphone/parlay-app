@@ -7,20 +7,29 @@ import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SPORTS = [
-    "americanfootball_nfl",
-    "basketball_nba",
-    "soccer_epl",
-    "soccer_fifa_world_cup",
-]
+SPORTS = ["americanfootball_nfl", "basketball_nba", "soccer_epl"]
 
 API_BASE = "https://api.the-odds-api.com/v4"
 
 # Only suggest legs where we estimate we have at least this much edge.
 MIN_LEG_EDGE = 0.02  # 2% EV on a single leg
 MIN_PARLAY_EV = 0.04  # 4% EV on the combined parlay
-MAX_LEGS = 3  # Keep parlays small — more legs = more variance
+MAX_LEGS = 3  # Keep parlays small — more legs = more mistakes right now
 MIN_LEGS = 2
+
+# ── Winnability controls ────────────────────────────────────────────────────
+# to prevent suggesting longshot underdogs
+# +EV on paper but too unlikely to actually win to be worth parlaying.
+
+MIN_LEG_PROB = 0.40  # reject any single leg below 40% true win prob
+MIN_PARLAY_PROB = 0.20  # reject any parlay whose combined hit prob < 20%
+
+# Favourite-longshot bias correction.
+# Vig-removal systematically overstates underdog probabilities, which is why
+# underdogs keep looking +EV. Raising true probs to a power > 1 shrinks long-
+# shot estimates and nudges them toward favourites, correcting the bias.
+# 1.0 = no correction. 1.05–1.15 is a sensible range; higher = more aggressive.
+LONGSHOT_BIAS_POWER = 1.08
 
 
 # ── Maths ─────────────────────────────────────────────────────────────────────
@@ -61,6 +70,20 @@ def leg_ev(true_prob: float, american_odds: int) -> float:
     """Expected value of a single leg. Positive = +EV."""
     payout = (100 / -american_odds) if american_odds < 0 else (american_odds / 100)
     return (true_prob * payout) - (1 - true_prob)
+
+
+def correct_longshot_bias(true_prob: float) -> float:
+    """
+    Shrink underdog probabilities to counter favourite-longshot bias.
+
+    Vig-removal overstates how likely underdogs are to win, so they keep
+    looking +EV. Raising the probability to a power > 1 pulls low probs down
+    harder than high ones, then we renormalise so the two sides still sum to 1.
+    With LONGSHOT_BIAS_POWER = 1, this is a no-op.
+    """
+    p = true_prob**LONGSHOT_BIAS_POWER
+    q = (1 - true_prob) ** LONGSHOT_BIAS_POWER
+    return p / (p + q)
 
 
 def parlay_ev(legs: list[dict]) -> float:
@@ -221,7 +244,11 @@ def two_way_market_legs(
 
     legs = []
     for name in avg:
-        tp = true_probs[name]
+        tp = correct_longshot_bias(true_probs[name])
+
+        # Skip legs too unlikely to win, regardless of EV
+        if tp < MIN_LEG_PROB:
+            continue
 
         # Consensus point = most common line across books for this side
         pts = side_points.get(name, [])
@@ -275,17 +302,6 @@ def two_way_market_legs(
     return legs
 
 
-from datetime import datetime, timezone
-
-
-def is_upcoming(commence_time: str) -> bool:
-    """Return True if the game's official start time is still in the future."""
-    if not commence_time:
-        return False
-    game_time = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
-    return game_time > datetime.now(timezone.utc)
-
-
 def extract_legs(games: list[dict], sport: str) -> list[dict]:
     """
     Pull candidate +EV legs from raw API response.
@@ -293,22 +309,13 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
     For each game: averages the implied probability across ALL bookmakers,
     strips the vig, then calculates EV against the BEST available odds
     (line shopping). This is a far better estimate than a single book's line.
-
-    Skips games that have already started — live/in-play odds move too fast
-    for this engine's pregame vig-removal math to stay accurate.
     """
-
     legs = []
 
     for game in games:
-        # Skip games already in progress or finished
-        raw_commence = game.get("commence_time", "")
-        if not is_upcoming(raw_commence):
-            continue
-
         home = game.get("home_team")
         away = game.get("away_team")
-        commence = raw_commence
+        commence = game.get("commence_time", "")[:16].replace("T", " ")
 
         bookmakers = game.get("bookmakers", [])
         if not bookmakers:
@@ -338,7 +345,9 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
 
         # Only build moneyline legs for home and away (skip betting the draw)
         for side, prob_key in [(home, home), (away, away)]:
-            tp = true_probs[prob_key]
+            tp = correct_longshot_bias(true_probs[prob_key])
+            if tp < MIN_LEG_PROB:
+                continue
             odds = best_odds_for(bookmakers, side)
             if odds is None:
                 continue
@@ -367,16 +376,17 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
         )
 
     return legs
+
+
 # ── Parlay builder ─────────────────────────────────────────────────────────────
+
 
 def build_parlays(legs: list[dict]) -> list[dict]:
     """
     Generate all 2- and 3-leg combos from candidate legs and rank by EV.
 
-    Skips combinations where two legs are from the same game (correlated),
-    and skips combinations that mix legs from different sports.
+    Skips combinations where two legs are from the same game (correlated).
     """
-
     parlays = []
 
     for n in range(MIN_LEGS, MAX_LEGS + 1):
@@ -386,13 +396,16 @@ def build_parlays(legs: list[dict]) -> list[dict]:
             if len(games) != len(set(games)):
                 continue
 
-            # Reject combos that mix sports — keep each parlay single-sport
-            sports = {leg["sport"] for leg in combo}
-            if len(sports) > 1:
-                continue
-
             ev = parlay_ev(list(combo))
             if ev < MIN_PARLAY_EV:
+                continue
+
+            # Combined hit probability — reject parlays too unlikely to win,
+            # even if EV looks good (stops stacks of longshots).
+            combined_true = 1.0
+            for leg in combo:
+                combined_true *= leg["true_prob"]
+            if combined_true < MIN_PARLAY_PROB:
                 continue
 
             # Combined implied odds for display
@@ -401,16 +414,23 @@ def build_parlays(legs: list[dict]) -> list[dict]:
                 combined_implied *= implied_prob(leg["odds"])
             display_odds = to_american(1 / combined_implied)
 
-            parlays.append({
-                "legs": list(combo),
-                "ev": ev,
-                "display_odds": f"+{display_odds}" if display_odds > 0 else str(display_odds),
-                "n_legs": n,
-            })
+            parlays.append(
+                {
+                    "legs": list(combo),
+                    "ev": ev,
+                    "hit_prob": combined_true,
+                    "display_odds": (
+                        f"+{display_odds}" if display_odds > 0 else str(display_odds)
+                    ),
+                    "n_legs": n,
+                }
+            )
 
     return sorted(parlays, key=lambda p: p["ev"], reverse=True)
 
+
 # ── Display ────────────────────────────────────────────────────────────────────
+
 
 def print_parlays(parlays: list[dict]) -> None:
     if not parlays:
@@ -423,20 +443,27 @@ def print_parlays(parlays: list[dict]) -> None:
 
     for i, p in enumerate(parlays[:5], 1):
         ev_pct = f"+{p['ev']*100:.1f}%"
-        print(f"\n#{i}  {p['n_legs']}-leg parlay  |  EV {ev_pct}  |  {p['display_odds']}")
+        print(
+            f"\n#{i}  {p['n_legs']}-leg parlay  |  EV {ev_pct}  |  {p['display_odds']}"
+        )
         for leg in p["legs"]:
             sport_short = leg["sport"].split("_")[-1].upper()
-            print(f"   • [{sport_short}] {leg['label']}  {leg['odds']:+d}  "
-                  f"(true prob {leg['true_prob']*100:.1f}%)  —  {leg['game']}")
+            print(
+                f"   • [{sport_short}] {leg['label']}  {leg['odds']:+d}  "
+                f"(true prob {leg['true_prob']*100:.1f}%)  —  {leg['game']}"
+            )
 
     print(f"\n{'─'*60}\n")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parlay suggestion tool")
-    parser.add_argument("--api-key", default=os.getenv("ODDS_API_KEY"), help="The Odds API key")
+    parser.add_argument(
+        "--api-key", default=os.getenv("ODDS_API_KEY"), help="The Odds API key"
+    )
     args = parser.parse_args()
 
     if not args.api_key:
