@@ -26,8 +26,8 @@ MIN_LEGS = 2
 # to prevent suggesting longshot underdogs
 # +EV on paper but too unlikely to actually win to be worth parlaying.
 
-MIN_LEG_PROB = 0.40  # reject any single leg below 40% true win prob
-MIN_PARLAY_PROB = 0.20  # reject any parlay whose combined hit prob < 20%
+MIN_LEG_PROB = 0.25  # reject any single leg below 40% true win prob
+MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 20%
 
 # Favourite-longshot bias correction.
 # Vig-removal systematically overstates underdog probabilities, which is why
