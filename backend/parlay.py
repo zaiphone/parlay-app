@@ -7,7 +7,12 @@ import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SPORTS = ["americanfootball_nfl", "basketball_nba", "soccer_epl"]
+SPORTS = [
+    "americanfootball_nfl",
+    "basketball_nba",
+    "soccer_epl",
+    "soccer_fifa_world_cup",
+]
 
 API_BASE = "https://api.the-odds-api.com/v4"
 

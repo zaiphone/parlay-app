@@ -119,6 +119,7 @@ const SPORT_LABELS: Record<string, string> = {
   'americanfootball_nfl': 'NFL',
   'basketball_nba':       'NBA',
   'soccer_epl':           'EPL',
+  'soccer_fifa_world_cup': 'World Cup'
 };
 
 /**
