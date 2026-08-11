@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Optional
 import requests
+import nba_model
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -26,8 +27,12 @@ MIN_LEGS = 2
 # to prevent suggesting longshot underdogs
 # +EV on paper but too unlikely to actually win to be worth parlaying.
 
-MIN_LEG_PROB = 0.25  # reject any single leg below 40% true win prob
-MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 20%
+MIN_LEG_PROB = 0.40  # reject any single leg below 40% true win prob
+MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 12%
+
+LONGSHOT_BIAS_POWER = 1.08
+
+MODEL_MIN_EDGE = 0.02  # NBA model must also show at least this much edge
 
 # Favourite-longshot bias correction.
 # Vig-removal systematically overstates underdog probabilities, which is why
@@ -349,6 +354,7 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
         }
 
         # Only build moneyline legs for home and away (skip betting the draw)
+        # Only build moneyline legs for home and away (skip betting the draw)
         for side, prob_key in [(home, home), (away, away)]:
             tp = correct_longshot_bias(true_probs[prob_key])
             if tp < MIN_LEG_PROB:
@@ -356,6 +362,16 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
             odds = best_odds_for(bookmakers, side)
             if odds is None:
                 continue
+
+            # NBA moneylines only: veto this leg if the model disagrees
+            if sport == "basketball_nba":
+                model_prob = nba_model.predict_home_win_prob(home, away, commence)
+                if model_prob is not None:
+                    implied = implied_prob(odds)
+                    side_model_prob = model_prob if side == home else (1 - model_prob)
+                    if (side_model_prob - implied) < MODEL_MIN_EDGE:
+                        continue  # model disagrees -> skip this leg
+
             ev = leg_ev(tp, odds)
             if ev >= MIN_LEG_EDGE:
                 legs.append(
