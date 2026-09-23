@@ -13,6 +13,8 @@ Auto-generated docs live at http://localhost:8000/docs
 """
 
 import os
+import time
+import threading
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +28,7 @@ load_dotenv()
 app = FastAPI(title="Parlay Suggestions API")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
-# The browser blocks requests between different origins (ports) by default.
-# Your React dev server runs on :5173, this API on :8000 — different origins.
-# This middleware tells the browser those frontend origins are allowed.
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -43,14 +43,14 @@ app.add_middleware(
 
 # ── Routes ──────────────────────────────────────────────────────────────────
 
+
 @app.get("/")
 def root():
     """Health check — confirms the server is running."""
     return {"status": "ok", "message": "Parlay API is running. See /api/parlays"}
 
 
-@app.get("/api/parlays")
-def get_parlays():
+def _build_fresh_parlays():
     """
     Fetch today's odds for all sports, build +EV parlays, return as JSON.
 
@@ -59,7 +59,7 @@ def get_parlays():
     """
     api_key = os.getenv("ODDS_API_KEY")
     if not api_key:
-        # 500 = server misconfigured. The key should be in .env (or Railway).
+        # 500 = server misconfigured. my key should be in .env (or Railway).
         raise HTTPException(
             status_code=500,
             detail="ODDS_API_KEY is not set. Add it to your .env file.",
@@ -81,3 +81,29 @@ def get_parlays():
         "parlays": parlays[:20],
         "bookmakers": sorted(b for b in books_used if b),
     }
+
+
+# ── Cache ───────────────────────────────────────────────────────────────────
+CACHE_TTL_SECONDS = 3600  # so hourly
+_cache = {"data": None, "timestamp": 0.0}
+_cache_lock = threading.Lock()
+
+
+@app.get("/api/parlays")
+def get_parlays():
+    """Serve cached parlays; only rebuild (and spend API credits) when stale."""
+    if (
+        _cache["data"] is not None
+        and time.time() - _cache["timestamp"] < CACHE_TTL_SECONDS
+    ):
+        return _cache["data"]
+    with _cache_lock:
+        # recheck
+        if (
+            _cache["data"] is not None
+            and time.time() - _cache["timestamp"] < CACHE_TTL_SECONDS
+        ):
+            return _cache["data"]
+        _cache["data"] = _build_fresh_parlays()
+        _cache["timestamp"] = time.time()
+        return _cache["data"]
