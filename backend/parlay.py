@@ -8,12 +8,7 @@ import nba_model
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-SPORTS = [
-    "americanfootball_nfl",
-    "basketball_nba",
-    "soccer_epl",
-    "soccer_fifa_world_cup",
-]
+SPORTS = ["americanfootball_nfl", "basketball_nba"]
 
 API_BASE = "https://api.the-odds-api.com/v4"
 
