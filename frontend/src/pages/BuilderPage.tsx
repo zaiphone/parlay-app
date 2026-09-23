@@ -102,6 +102,26 @@ export function BuilderPage() {
           </div>
         )}
 
+        {/* ── Loaded, but nothing has a real edge right now ─────── */}
+        {state === 'success' && parlays.length === 0 && (
+          <div
+            style={{
+              background: 'var(--surface)',
+              border: '1px dashed var(--border-2)',
+              borderRadius: 14,
+              padding: 34,
+              textAlign: 'center',
+              color: 'var(--muted)',
+              fontSize: 13,
+              lineHeight: 1.5,
+              marginTop: 8,
+            }}
+          >
+            No parlays with a real edge right now. Lines are efficient at the moment;
+            edges usually appear closer to game time or after injury news.
+          </div>
+        )}
+
         {/* ── Loaded ───────────────────────────────────── */}
         {parlays.length > 0 && (
           <>
