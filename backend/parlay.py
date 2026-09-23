@@ -14,8 +14,8 @@ SPORTS = ["americanfootball_nfl", "basketball_nba"]
 API_BASE = "https://api.the-odds-api.com/v4"
 
 # Only suggest legs where we estimate we have at least this much edge.
-MIN_LEG_EDGE = 0.02  # 2% EV on a single leg
-MIN_PARLAY_EV = 0.04  # 4% EV on the combined parlay
+MIN_LEG_EDGE = 0.01  # 1% EV on a single leg
+MIN_PARLAY_EV = 0.02  # 2% EV on the combined parlay
 MAX_LEGS = 3  # Keep parlays small — more legs = more mistakes right now
 MIN_LEGS = 2
 
@@ -28,7 +28,7 @@ MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 12%
 
 LONGSHOT_BIAS_POWER = 1.08
 
-MODEL_MIN_EDGE = 0.02  # NBA model must also show at least this much edge
+MODEL_MIN_EDGE = 0.01  # NBA model must also show at least this much edge
 
 MODELS = {
     "basketball_nba": nba_model,
