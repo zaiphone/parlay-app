@@ -5,6 +5,7 @@ import sys
 from typing import Optional
 import requests
 import nba_model
+import nfl_model
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -22,12 +23,17 @@ MIN_LEGS = 2
 # to prevent suggesting longshot underdogs
 # +EV on paper but too unlikely to actually win to be worth parlaying.
 
-MIN_LEG_PROB = 0.3  # reject any single leg below 40% true win prob
+MIN_LEG_PROB = 0.3  # reject any single leg below 30% true win prob
 MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 12%
 
 LONGSHOT_BIAS_POWER = 1.08
 
 MODEL_MIN_EDGE = 0.02  # NBA model must also show at least this much edge
+
+MODELS = {
+    "basketball_nba": nba_model,
+    "americanfootball_nfl": nfl_model,
+}
 
 # Favourite-longshot bias correction.
 # Vig-removal systematically overstates underdog probabilities, which is why
@@ -358,8 +364,10 @@ def extract_legs(games: list[dict], sport: str) -> list[dict]:
                 continue
 
             # NBA moneylines only: veto this leg if the model disagrees
-            if sport == "basketball_nba":
-                model_prob = nba_model.predict_home_win_prob(home, away, commence)
+            # NBA/NFL moneylines: veto this leg if that sport's model disagrees
+            model = MODELS.get(sport)
+            if model is not None:
+                model_prob = model.predict_home_win_prob(home, away, commence)
                 if model_prob is not None:
                     implied = implied_prob(odds)
                     side_model_prob = model_prob if side == home else (1 - model_prob)
