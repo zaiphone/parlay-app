@@ -27,7 +27,7 @@ MIN_LEGS = 2
 # to prevent suggesting longshot underdogs
 # +EV on paper but too unlikely to actually win to be worth parlaying.
 
-MIN_LEG_PROB = 0.40  # reject any single leg below 40% true win prob
+MIN_LEG_PROB = 0.3  # reject any single leg below 40% true win prob
 MIN_PARLAY_PROB = 0.12  # reject any parlay whose combined hit prob < 12%
 
 LONGSHOT_BIAS_POWER = 1.08
@@ -39,7 +39,6 @@ MODEL_MIN_EDGE = 0.02  # NBA model must also show at least this much edge
 # underdogs keep looking +EV. Raising true probs to a power > 1 shrinks long-
 # shot estimates and nudges them toward favourites, correcting the bias.
 # 1.0 = no correction. 1.05–1.15 is a sensible range; higher = more aggressive.
-LONGSHOT_BIAS_POWER = 1.08
 
 
 # ── Maths ─────────────────────────────────────────────────────────────────────
