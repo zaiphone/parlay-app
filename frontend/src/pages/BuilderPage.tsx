@@ -247,7 +247,7 @@ export function BuilderPage() {
             className="mono"
             style={{ fontSize: 10, color: 'var(--faint)', textAlign: 'center', lineHeight: 1.6 }}
           >
-            EV = model win probability × decimal odds − 1. Odds refresh every 10 minutes.
+            EV = vig-free market probability × decimal odds − 1. NBA/NFL moneylines also require our model to agree.
           </div>
 
           {/* Disclaimer toggle */}
