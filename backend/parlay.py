@@ -221,84 +221,67 @@ def two_way_market_legs(
     The consensus `point` (most common line across books) is used for the label
     so the suggestion reflects the standard market number.
     """
-    # Collect per-side implied probs and the points each book is using
-    side_probs: dict[str, list[float]] = {}
-    side_points: dict[str, list[float]] = {}
-
+    markets = []
     for bookmaker in bookmakers:
         market = next(
             (m for m in bookmaker.get("markets", []) if m["key"] == market_key),
             None,
         )
-        if not market:
-            continue
-        outcomes = market["outcomes"]
-        # A valid two-way market has exactly two priced sides
-        if len(outcomes) != 2:
-            continue
-        for o in outcomes:
-            name = o["name"]
-            side_probs.setdefault(name, []).append(implied_prob(o["price"]))
-            if o.get("point") is not None:
-                side_points.setdefault(name, []).append(o["point"])
+        if market and len(market["outcomes"]) == 2:
+            markets.append(market)
+    if not markets:
+        return []
 
-    # Need both sides present to strip vig
+    # Consensus line = the point most books are offering for each side
+    all_points: dict[str, list[float]] = {}
+    for market in markets:
+        for o in market["outcomes"]:
+            if o.get("point") is not None:
+                all_points.setdefault(o["name"], []).append(o["point"])
+    consensus = {name: max(set(pts), key=pts.count) for name, pts in all_points.items()}
+
+    # Only compare books offering that exact line, so every price is for the same bet
+    markets = [
+        m
+        for m in markets
+        if all(o.get("point") == consensus.get(o["name"]) for o in m["outcomes"])
+    ]
+
+    side_probs: dict[str, list[float]] = {}
+    for market in markets:
+        for o in market["outcomes"]:
+            side_probs.setdefault(o["name"], []).append(implied_prob(o["price"]))
     if len(side_probs) != 2:
         return []
 
     avg = {name: sum(v) / len(v) for name, v in side_probs.items()}
     total = sum(avg.values())
-    if total == 0:
-        return []
     true_probs = {name: v / total for name, v in avg.items()}
 
     legs = []
     for name in avg:
         tp = correct_longshot_bias(true_probs[name])
-
-        # Skip legs too unlikely to win, regardless of EV
         if tp < MIN_LEG_PROB:
             continue
 
-        # Consensus point = most common line across books for this side
-        pts = side_points.get(name, [])
-        consensus_point = max(set(pts), key=pts.count) if pts else None
-
-        # Best (lowest implied prob = highest payout) price for this side
-        best_price = None
-        best_implied = None
-        for bookmaker in bookmakers:
-            market = next(
-                (m for m in bookmaker.get("markets", []) if m["key"] == market_key),
-                None,
-            )
-            if not market:
-                continue
-            for o in market["outcomes"]:
-                if o["name"] != name:
-                    continue
-                imp = implied_prob(o["price"])
-                if best_implied is None or imp < best_implied:
-                    best_implied = imp
-                    best_price = o["price"]
-        if best_price is None:
-            continue
-
+        # Best (highest payout) price for this side, on the consensus line only
+        best_price = min(
+            (o["price"] for m in markets for o in m["outcomes"] if o["name"] == name),
+            key=implied_prob,
+        )
         ev = leg_ev(tp, best_price)
         if ev < MIN_LEG_EDGE:
             continue
 
-        # Build a readable label per market type
+        point = consensus.get(name)
         if market_key == "spreads":
-            point_str = f"{consensus_point:+g}" if consensus_point is not None else ""
-            label = f"{name} {point_str}".strip()
+            point_str = f"{point:+g}" if point is not None else ""
         else:  # totals — name is "Over" or "Under"
-            point_str = f"{consensus_point:g}" if consensus_point is not None else ""
-            label = f"{name} {point_str}".strip()
+            point_str = f"{point:g}" if point is not None else ""
 
         legs.append(
             {
-                "label": label,
+                "label": f"{name} {point_str}".strip(),
                 "game": game_label,
                 "time": time,
                 "sport": sport,
